@@ -1,0 +1,11 @@
+{
+  "name": "norge-kommunekart",
+  "version": "1.0.0",
+  "description": "Interaktivt Norge kommunekart med live SSB-data",
+  "scripts": {
+    "dev": "netlify dev"
+  },
+  "devDependencies": {
+    "@netlify/functions": "^2.0.0"
+  }
+}

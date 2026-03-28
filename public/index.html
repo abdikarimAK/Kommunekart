@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Norge · Kommunekart</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root{
+      --bg:#faf8f4;--bg-el:#ffffff;
+      --text:#1a1a1e;--text-sec:#6b6b73;--text-ter:#a0a0a8;
+      --accent:#2d5bf6;--accent-light:rgba(45,91,246,0.08);
+      --border:rgba(0,0,0,0.06);--border-strong:rgba(0,0,0,0.12);
+      --pos:#16a34a;--neg:#dc2626;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%;overflow:hidden;font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased}
+    button{font-family:inherit;cursor:pointer;background:none;border:none}
+
+    #app{display:flex;height:100vh;overflow:hidden}
+    #left{width:42%;max-width:520px;min-width:360px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--bg);z-index:10}
+    #right{flex:1;position:relative;background:var(--bg)}
+
+    /* TOPBAR */
+    #topbar{display:flex;align-items:center;justify-content:space-between;padding:32px 40px 14px;flex-shrink:0}
+    .live-badge{display:flex;align-items:center;gap:5px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-ter)}
+    .live-dot{width:5px;height:5px;border-radius:50%;background:var(--pos);animation:blink 2.5s infinite}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+    #modes{display:flex}
+    .mbtn{padding:6px 13px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-ter);border:1px solid var(--border-strong);margin-left:-1px;transition:all .2s}
+    .mbtn:first-child{border-radius:4px 0 0 4px}.mbtn:last-child{border-radius:0 4px 4px 0}
+    .mbtn.on{color:var(--accent);background:var(--accent-light);border-color:var(--accent);z-index:1}
+
+    /* SEARCH BTN */
+    #search-btn{padding:8px;margin-left:-8px;color:var(--text-ter);transition:color .2s;display:flex}
+    #search-btn:hover{color:var(--text)}
+
+    /* DATA PANEL */
+    #data{flex:1;overflow-y:auto;padding:24px 40px}
+    #data::-webkit-scrollbar{width:3px}
+    #data::-webkit-scrollbar-thumb{background:rgba(0,0,0,.1);border-radius:3px}
+
+    /* BREADCRUMB */
+    #bc-wrap{padding:18px 40px 26px;display:flex;align-items:center;flex-shrink:0;font-size:13px}
+    .bc-sep{color:var(--text-ter);margin:0 8px}
+    .bc-i{color:var(--text-ter);transition:color .2s;cursor:pointer}
+    .bc-i.bc-on{color:var(--text);cursor:default}
+    .bc-i:not(.bc-on):hover{color:var(--accent)}
+
+    /* VIEW ANIMATION */
+    .view{animation:vu .4s cubic-bezier(.16,1,.3,1) forwards}
+    @keyframes vu{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+
+    /* TYPOGRAPHY */
+    .big-h{font-size:clamp(48px,5.5vw,72px);font-weight:300;letter-spacing:-.03em;line-height:1;margin-bottom:18px}
+    .med-h{font-size:clamp(36px,4.5vw,58px);font-weight:300;letter-spacing:-.03em;line-height:1;margin-bottom:5px}
+    .sub-lbl{font-size:13px;color:var(--text-ter);margin-bottom:18px}
+    .divider{width:44px;height:1px;background:rgba(0,0,0,.1);margin:20px 0}
+    .pval{font-family:'JetBrains Mono',monospace;font-size:44px;font-weight:300;letter-spacing:-.02em;line-height:1;margin-bottom:5px}
+    .plbl{font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--text-ter);margin-bottom:5px}
+    .psub{font-size:11px;color:var(--text-ter);margin-bottom:24px;min-height:16px;transition:color .3s}
+    .psub.live{color:var(--pos)}
+
+    /* STAT GRID */
+    .sgrid{display:grid;grid-template-columns:1fr 1fr;gap:22px 26px;margin-bottom:32px}
+    .slbl{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-ter);margin-bottom:4px}
+    .sval{font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:300;letter-spacing:-.02em;display:flex;align-items:baseline;gap:5px;flex-wrap:wrap}
+    .sunit{font-size:11px;color:var(--text-ter);font-family:'Inter',sans-serif}
+    .strend{font-size:11px;font-family:'Inter',sans-serif}
+    .tup{color:var(--pos)}.tdn{color:var(--neg)}.tnu{color:var(--text-ter)}
+    .api-chip{display:inline-flex;align-items:center;gap:3px;font-size:9px;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:3px;margin-top:3px}
+    .api-chip.live{background:rgba(22,163,74,.1);color:var(--pos)}
+    .api-chip.static{background:rgba(0,0,0,.05);color:var(--text-ter)}
+    .api-chip.loading{background:rgba(45,91,246,.08);color:var(--accent)}
+
+    /* LIST */
+    .sec-lbl{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-ter);margin-bottom:10px;margin-top:4px}
+    .lrow{width:100%;display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(0,0,0,.04);text-align:left;transition:all .15s}
+    .lrow:hover .rn{color:var(--accent)}.lrow:hover .rv{color:var(--accent)}
+    .rn{font-size:15px;color:var(--text);transition:color .15s}
+    .rv{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text-sec);transition:color .15s}
+    .back{font-size:13px;color:var(--text-ter);margin-bottom:24px;display:block;transition:color .2s}
+    .back:hover{color:var(--accent)}
+    .rank-row{font-size:13px;color:var(--text-sec);padding-top:18px;border-top:1px solid var(--border);margin-top:10px}
+    .rank-row strong{color:var(--text);font-weight:500}
+
+    /* MINI CHART */
+    .mc-wrap{margin-bottom:24px}
+    .mc-t{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-ter);margin-bottom:9px}
+
+    /* SKELETON */
+    .skel{background:linear-gradient(90deg,#f0ede8 25%,#e8e4de 50%,#f0ede8 75%);background-size:200% 100%;animation:sh 1.4s infinite;border-radius:4px}
+    @keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+    /* SEARCH */
+    #s-ov{position:fixed;inset:0;z-index:1000;display:none}
+    #s-bk{position:absolute;inset:0;background:rgba(250,248,244,.88);backdrop-filter:blur(6px)}
+    #s-md{position:absolute;top:18%;left:50%;transform:translateX(-50%);width:520px;max-width:90vw;background:var(--bg-el);border-radius:12px;box-shadow:0 24px 60px rgba(0,0,0,.12);overflow:hidden;display:flex;flex-direction:column;max-height:58vh;animation:mi .35s cubic-bezier(.16,1,.3,1) forwards}
+    @keyframes mi{from{opacity:0;transform:translateX(-50%) translateY(8px) scale(.98)}to{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}
+    #s-hd{display:flex;align-items:center;padding:0 22px;height:60px;border-bottom:1px solid var(--border);gap:13px}
+    #s-in{flex:1;border:none;outline:none;background:none;font-size:16px;color:var(--text);font-family:'Inter',sans-serif}
+    #s-in::placeholder{color:rgba(0,0,0,.25)}
+    .s-esc{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-ter)}
+    #s-rs{overflow-y:auto;flex:1;padding:6px 0}
+    .s-empty{padding:28px 22px;text-align:center;font-size:13px;color:var(--text-ter)}
+    .s-rw{width:100%;display:flex;align-items:center;justify-content:space-between;padding:12px 22px;text-align:left;transition:background .12s}
+    .s-rw:hover,.s-rw.sel{background:var(--accent-light)}
+    .s-rw:hover .srn,.s-rw.sel .srn{color:var(--accent)}
+    .srn{font-size:14px;color:var(--text);transition:color .12s}
+    .srv{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-ter)}
+    .sbdg{font-size:10px;color:var(--text-ter);padding:2px 7px;border-radius:10px;background:rgba(0,0,0,.05);margin-left:7px}
+
+    /* MAP */
+    #legend{position:absolute;bottom:26px;right:26px;z-index:20;pointer-events:none}
+    .leg-row{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--text-ter);letter-spacing:.06em}
+    .leg-bar{width:80px;height:1px;background:linear-gradient(90deg,rgba(45,91,246,.1),rgba(45,91,246,.85))}
+    #src-note{position:absolute;bottom:26px;left:26px;z-index:20;font-size:10px;color:var(--text-ter);pointer-events:none;line-height:1.8}
+    #map-loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:var(--bg);z-index:50;transition:opacity .5s}
+    #map-loading.hide{opacity:0;pointer-events:none}
+    .load-spin{width:22px;height:22px;border:2px solid var(--border-strong);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+    .load-txt{font-size:11px;color:var(--text-ter);letter-spacing:.08em;text-transform:uppercase}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .leaflet-container{background:var(--bg)!important;font-family:'Inter',sans-serif!important}
+    .leaflet-control-zoom,.leaflet-control-attribution{display:none!important}
+    .leaflet-tooltip{background:var(--bg-el)!important;border:1px solid var(--border)!important;border-radius:4px!important;color:var(--text)!important;font-family:'Inter',sans-serif!important;font-size:12px!important;padding:6px 12px!important;box-shadow:0 4px 12px rgba(0,0,0,.07)!important}
+    .leaflet-tooltip::before{display:none!important}
+
+    /* APP LOADING STATE */
+    #app-init{position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity .6s}
+    #app-init.hide{opacity:0;pointer-events:none}
+    .init-title{font-size:18px;font-weight:300;letter-spacing:-.01em;color:var(--text)}
+    .init-sub{font-size:12px;color:var(--text-ter);letter-spacing:.06em;text-transform:uppercase}
+  </style>
+</head>
+<body>
+
+<!-- Full-screen init loader -->
+<div id="app-init">
+  <div class="load-spin" style="width:28px;height:28px"></div>
+  <div class="init-title">Norge Kommunekart</div>
+  <div class="init-sub" id="init-msg">Henter kommunedata fra SSB…</div>
+</div>
+
+<div id="app" style="opacity:0;transition:opacity .5s">
+  <div id="left">
+    <div id="topbar">
+      <div style="display:flex;align-items:center;gap:12px">
+        <button id="search-btn" onclick="openSearch()" title="Søk (Ctrl+K)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
+        <div class="live-badge"><div class="live-dot"></div><span>SSB live</span></div>
+      </div>
+      <div id="modes">
+        <button class="mbtn on" onclick="setMode('population',this)">Befolkning</button>
+      </div>
+    </div>
+    <div id="data"></div>
+    <div id="bc-wrap"></div>
+  </div>
+  <div id="right">
+    <div id="map-loading"><div class="load-spin"></div><div class="load-txt">Laster kartdata…</div></div>
+    <div id="map" style="position:absolute;inset:0;z-index:0"></div>
+    <div id="legend"><div class="leg-row"><span id="leg-min"></span><div class="leg-bar"></div><span id="leg-max"></span></div></div>
+    <div id="src-note"><span id="src-period"></span></div>
+  </div>
+</div>
+
+<!-- Search -->
+<div id="s-ov">
+  <div id="s-bk" onclick="closeSearch()"></div>
+  <div id="s-md">
+    <div id="s-hd">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#a0a0a8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="s-in" type="text" placeholder="Søk kommune…" autocomplete="off" oninput="onSearch(this.value)" onkeydown="onSKey(event)">
+      <span class="s-esc">ESC</span>
+    </div>
+    <div id="s-rs"><div class="s-empty">Laster…</div></div>
+  </div>
+</div>
+
+<script>
+  'use strict';
+
+  /* ═══════════════════════════════════════════════════════════
+     STATE — everything comes from the API, nothing hardcoded
+  ═══════════════════════════════════════════════════════════ */
+  var APP = {
+    mode: 'population',
+    county: null,      // { fylkeNr, name, municipalities: [] }
+    municipality: null, // { knr, name, fylkeNr }
+
+    /* Loaded from API */
+    municipalities: [], // [{ knr, name, fylkeNr }]
+    fylker: [],         // [{ fylkeNr, name, municipalities: [] }]
+    population: {},     // { knr: number } — SSB 07459
+    popPeriod: '',
+    kommuneCache: {},   // knr → { population, unemployment, income, ... }
+    nationalPop: null,
+    nationalPeriod: '',
+  };
+
+  /* Fylke name lookup by fylkeNr prefix */
+  var FYLKE_NAMES = {
+    '03':'Oslo','31':'Østfold','32':'Akershus','33':'Buskerud',
+    '34':'Innlandet','39':'Vestfold','40':'Telemark','42':'Agder',
+    '11':'Rogaland','46':'Vestland','15':'Møre og Romsdal',
+    '50':'Trøndelag','18':'Nordland','55':'Troms','56':'Finnmark'
+  };
+
+  /* GeoJSON fylke name → fylkeNr */
+  var FYLKE_GEO_MAP = {
+    'oslo':'03','østfold':'31','akershus':'32','buskerud':'33',
+    'innlandet':'34','vestfold':'39','telemark':'40','agder':'42',
+    'rogaland':'11','vestland':'46','møre og romsdal':'15',
+    'trøndelag':'50','nordland':'18','troms':'55','finnmark':'56'
+  };
+
+  /* Approximate fylke centers for map zoom */
+  var FYLKE_CENTERS = {
+    '03':[59.9139,10.7522],'31':[59.40,11.20],'32':[59.90,10.90],
+    '33':[60.20,9.60],'34':[61.20,10.50],'39':[59.30,10.30],
+    '40':[59.50,8.70],'42':[58.30,7.80],'11':[59.00,6.20],
+    '46':[60.60,6.20],'15':[62.50,7.50],'50':[63.80,11.20],
+    '18':[67.20,14.50],'55':[69.40,19.00],'56':[70.20,26.00]
+  };
+
+  /* Approximate municipality coordinates (used for map zoom on click) */
+  /* These are fallback centers — the GeoJSON polygon center is used when available */
+  var MUNI_CENTERS = {
+    '0301':[59.9139,10.7522],'4204':[58.1462,7.9958],'4205':[58.08,7.46],
+    '1103':[58.97,5.73],'1201':[60.39,5.32],'5001':[63.43,10.40],
+    '1804':[67.28,14.38],'5401':[69.65,18.96],'5501':[69.97,23.27]
+  };
+
+  /* ═══════════════════════════════════════════════════════════
+     API CALLS — all data from backend
+  ═══════════════════════════════════════════════════════════ */
+
+  async function apiFetch(path) {
+    var r = await fetch(path, { signal: AbortSignal.timeout(15000) });
+    if (!r.ok) throw new Error('API ' + r.status + ' ' + path);
+    return r.json();
+  }
+
+  async function loadAllMunicipalities() {
+    var data = await apiFetch('/api/municipalities');
+    APP.municipalities = data.municipalities;
+
+    /* Group into fylker */
+    var map = {};
+    data.municipalities.forEach(function(m) {
+      var fn = m.fylkeNr;
+      if (!map[fn]) {
+        map[fn] = {
+          fylkeNr: fn,
+          name: FYLKE_NAMES[fn] || ('Fylke ' + fn),
+          municipalities: []
+        };
+      }
+      map[fn].municipalities.push(m);
+    });
+    APP.fylker = Object.values(map).sort(function(a,b) {
+      return a.name.localeCompare(b.name, 'nb');
+    });
+    console.log('[API] Kommuner lastet:', data.count);
+  }
+
+  async function loadAllPopulation() {
+    var data = await apiFetch('/api/population');
+    APP.population = data.population;
+    APP.popPeriod = data.period;
+    document.getElementById('src-period').textContent =
+            'Befolkning per 1. jan ' + data.period + ' · SSB 07459';
+    console.log('[API] Befolkning lastet for', data.count, 'kommuner, periode:', data.period);
+  }
+
+  async function loadNational() {
+    var data = await apiFetch('/api/national');
+    APP.nationalPop = data.value;
+    APP.nationalPeriod = data.period;
+    console.log('[API] Nasjonal befolkning:', data.value, 'per', data.period);
+
+
+  }
+
+  async function loadKommune(knr) {
+    if (APP.kommuneCache[knr]) return APP.kommuneCache[knr];
+    var data = await apiFetch('/api/kommune?knr=' + knr);
+    APP.kommuneCache[knr] = data;
+    return data;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     MODE CONFIG
+  ═══════════════════════════════════════════════════════════ */
+  var MC = {
+    population: {
+      lbl: 'befolkning', legMin: '1k', legMax: '700k+',
+      min: 1000, max: 720000,
+      fmt: function(v) { return Math.round(v).toLocaleString('nb-NO'); },
+      get: function(knr) { return APP.population[knr] || 0; }
+    },
+    unemployment: {
+      lbl: 'arbeidsledige', legMin: '50', legMax: '5k+',
+      min: 50, max: 5000,
+      fmt: function(v) { return v != null ? Math.round(v).toLocaleString('nb-NO') : '–'; },
+      get: function(knr) {
+        /* Use bulk data first, fall back to kommune cache */
+        if (APP.unemployment[knr] != null) return APP.unemployment[knr];
+        var c = APP.kommuneCache[knr];
+        return c && c.unemployment != null ? c.unemployment : null;
+      }
+    },
+    income: {
+      lbl: 'medianinntekt', legMin: '400k', legMax: '900k+',
+      min: 400000, max: 900000,
+      fmt: function(v) { return Math.round(v / 1000) + 'k kr'; },
+      get: function(knr) {
+        /* Use bulk data first, fall back to kommune cache */
+        if (APP.income[knr]) return APP.income[knr];
+        var c = APP.kommuneCache[knr];
+        return c && c.income ? c.income : null;
+      }
+    }
+  };
+
+  function gv(knr) { return MC[APP.mode].get(knr); }
+  function fv(v) {
+    if (v === null || v === undefined) return '–';
+    return MC[APP.mode].fmt(v);
+  }
+  function fvPop(v) { return Math.round(v).toLocaleString('nb-NO'); }
+
+  /* ═══════════════════════════════════════════════════════════
+     ANIMATED COUNTER
+  ═══════════════════════════════════════════════════════════ */
+  function anim(el, from, to, dur) {
+    if (!el || to === null || to === undefined) return;
+    var s = performance.now();
+    (function step(now) {
+      var t = Math.min((now - s) / dur, 1), e = 1 - Math.pow(1 - t, 4);
+      var c = from + (to - from) * e;
+      if (to >= 10000) el.textContent = Math.round(c).toLocaleString('nb-NO');
+      else if (to % 1 !== 0 || to < 100) el.textContent = c.toFixed(1);
+      else el.textContent = Math.round(c).toLocaleString('nb-NO');
+      if (t < 1) requestAnimationFrame(step);
+    })(s);
+  }
+
+  function statCard(lbl, val, unit, trend, key) {
+    var tc = trend === 'up' ? 'tup' : trend === 'down' ? 'tdn' : 'tnu';
+    var ta = trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→';
+    var fvv = val === null || val === undefined ? '–' :
+            val >= 10000 ? Math.round(val).toLocaleString('nb-NO') :
+                    (val % 1 !== 0 || val < 100) ? val.toFixed(1) :
+                            Math.round(val).toLocaleString('nb-NO');
+    return '<div>'
+            + '<div class="slbl">' + lbl + '</div>'
+            + '<div class="sval"><span id="sv-' + key + '">' + fvv + '</span>'
+            + (unit ? '<span class="sunit">' + unit + '</span>' : '')
+            + '<span class="strend ' + tc + '">' + ta + '</span></div>'
+            + '<div id="ss-' + key + '" style="min-height:18px"><span class="api-chip loading">⟳</span></div>'
+            + '</div>';
+  }
+
+  function setChip(key, type, txt) {
+    var el = document.getElementById('ss-' + key);
+    if (el) el.innerHTML = '<span class="api-chip ' + type + '">' + txt + '</span>';
+  }
+
+  function animCard(key, from, to, dur) {
+    var el = document.getElementById('sv-' + key);
+    if (el && to !== null && to !== undefined) anim(el, from || 0, to, dur || 800);
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     MINI CHART
+  ═══════════════════════════════════════════════════════════ */
+  function miniChart(data, title) {
+    if (!data || !data.length) return '';
+    var W = 260, H = 52, p = 4;
+    var mn = Math.min.apply(null, data), mx = Math.max.apply(null, data);
+    var rng = mx - mn || 1;
+    var vpad = rng * 0.15; mn -= vpad; mx += vpad; rng = mx - mn;
+    function px(i) { return p + (i / (data.length - 1)) * (W - p * 2); }
+    function py(v) { return H - p - ((v - mn) / rng) * (H - p * 2); }
+    var pts = data.map(function(v, i) { return px(i) + ',' + py(v); }).join(' ');
+    var aD = 'M' + px(0) + ',' + H + ' L'
+            + data.map(function(v, i) { return px(i) + ',' + py(v); }).join(' L')
+            + ' L' + px(data.length - 1) + ',' + H + ' Z';
+    var gid = 'gc' + Math.random().toString(36).slice(2, 8);
+    return '<div class="mc-wrap"><div class="mc-t">' + title + '</div>'
+            + '<div style="background:#f4f1eb;border-radius:4px;overflow:hidden">'
+            + '<svg width="100%" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
+            + '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">'
+            + '<stop offset="0%" stop-color="#2d5bf6" stop-opacity="0.2"/>'
+            + '<stop offset="100%" stop-color="#2d5bf6" stop-opacity="0.02"/>'
+            + '</linearGradient></defs>'
+            + '<rect width="' + W + '" height="' + H + '" fill="#f4f1eb"/>'
+            + '<path d="' + aD + '" fill="url(#' + gid + ')" stroke="none"/>'
+            + '<polyline points="' + pts + '" fill="none" stroke="#2d5bf6" stroke-width="1.5" stroke-linejoin="round"/>'
+            + '</svg></div></div>';
+  }
+
+  function miniChartReal(years, values, label) {
+    var min = Math.min.apply(null, values);
+    var max = Math.max.apply(null, values);
+    var range = max - min || 1;
+    var W = 320, H = 80, pad = 4;
+    var pts = values.map(function(v, i) {
+      var x = pad + (i / (values.length - 1)) * (W - pad * 2);
+      var y = H - pad - ((v - min) / range) * (H - pad * 2);
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    });
+    var first = values[0], last = values[values.length - 1];
+    var pct = first > 0 ? ((last - first) / first * 100).toFixed(1) : '0';
+    var sign = pct >= 0 ? '+' : '';
+    // Year labels: first and last
+    var yr0 = years[0], yr1 = years[years.length - 1];
+    return '<div class="chart-wrap">'
+      + '<div class="chart-lbl">' + label + ' <span style="color:var(--c-accent)">' + sign + pct + '%</span> siden ' + yr0 + '</div>'
+      + '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" style="width:100%;height:' + H + 'px">'
+      + '<defs><linearGradient id="cg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--c-accent)" stop-opacity="0.18"/><stop offset="100%" stop-color="var(--c-accent)" stop-opacity="0"/></linearGradient></defs>'
+      + '<polygon points="' + pad + ',' + H + ' ' + pts.join(' ') + ' ' + (W - pad) + ',' + H + '" fill="url(#cg2)"/>'
+      + '<polyline points="' + pts.join(' ') + '" fill="none" stroke="var(--c-accent)" stroke-width="2" stroke-linejoin="round"/>'
+      + '<text x="' + pad + '" y="' + (H - 2) + '" font-size="9" fill="var(--c-muted)">' + yr0 + '</text>'
+      + '<text x="' + (W - pad) + '" y="' + (H - 2) + '" font-size="9" fill="var(--c-muted)" text-anchor="end">' + yr1 + '</text>'
+      + '</svg></div>';
+  }
+
+
+  /* ═══════════════════════════════════════════════════════════
+     BREADCRUMB
+  ═══════════════════════════════════════════════════════════ */
+  function renderBC() {
+    var el = document.getElementById('bc-wrap');
+    var h = '<span class="bc-i bc-on" onclick="goNational()">Norge</span>';
+    if (APP.county)
+      h += '<span class="bc-sep">/</span><span class="bc-i'
+              + (APP.municipality ? '' : ' bc-on') + '" onclick="goFylke(\'' + APP.county.fylkeNr + '\')">'
+              + APP.county.name + '</span>';
+    if (APP.municipality)
+      h += '<span class="bc-sep">/</span><span class="bc-i bc-on">'
+              + APP.municipality.name + '</span>';
+    el.innerHTML = h;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     RENDER NATIONAL
+  ═══════════════════════════════════════════════════════════ */
+  function renderNational() {
+    var natPop = APP.nationalPop || Object.values(APP.population).reduce(function(s,v){return s+v;},0);
+
+    var sorted = APP.fylker.slice().sort(function(a, b) {
+      var va = fylkeValue(a);
+      var vb = fylkeValue(b);
+      if (va === null && vb === null) return a.name.localeCompare(b.name, 'nb');
+      if (va === null) return 1;
+      if (vb === null) return -1;
+      return APP.mode === 'unemployment' ? va - vb : vb - va;
+    });
+
+    var html = '<div class="view">'
+            + '<h1 class="big-h">Norge</h1>'
+            + '<div class="divider"></div>'
+            + '<div class="pval" id="nat-pval">' + fvPop(natPop) + '</div>'
+            + '<div class="plbl">befolkning</div>'
+            + '<div class="psub" id="nat-sub">Per 1. jan '
+            + (APP.nationalPeriod || APP.popPeriod) + ' · SSB 07459</div>'
+            + '<div class="sgrid">'
+            + '<div><div class="slbl">Kommuner</div>'
+            + '<div class="sval"><span>' + APP.municipalities.length + '</span></div></div>'
+            + '<div><div class="slbl">Fylker</div>'
+            + '<div class="sval"><span>' + APP.fylker.length + '</span></div></div>'
+            + '</div>'
+            + '<div class="sec-lbl">Fylker</div>';
+
+    sorted.forEach(function(f) {
+      var v = fylkePopulation(f);
+      html += '<button class="lrow" onclick="goFylke(\'' + f.fylkeNr + '\')">'
+              + '<span class="rn">' + f.name + ' <span style="font-size:11px;color:var(--text-ter)">('
+              + f.municipalities.length + ')</span></span>'
+              + '<span class="rv">' + (v ? fvPop(v) : '–') + '</span></button>';
+    });
+    html += '</div>';
+    document.getElementById('data').innerHTML = html;
+  }
+
+  function fylkePopulation(fylke) {
+    return fylke.municipalities.reduce(function(s, m) {
+      return s + (APP.population[m.knr] || 0);
+    }, 0);
+  }
+
+  function fylkeValue(fylke) {
+    if (APP.mode === 'population') return fylkePopulation(fylke);
+    /* For unemployment/income we need cached data — use population as fallback */
+    var sum = 0, count = 0;
+    fylke.municipalities.forEach(function(m) {
+      var v = MC[APP.mode].get(m.knr);
+      if (v !== null && v !== undefined) { sum += v; count++; }
+    });
+    return count > 0 ? sum / count : null;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     RENDER FYLKE
+  ═══════════════════════════════════════════════════════════ */
+  function renderFylke(fylke) {
+    var sorted = fylke.municipalities.slice().sort(function(a, b) {
+      var va = APP.population[a.knr] || 0;
+      var vb = APP.population[b.knr] || 0;
+      return vb - va;
+    });
+
+    var totalPop = fylkePopulation(fylke);
+    var popData = sorted.map(function(m) { return APP.population[m.knr] || 0; })
+            .filter(function(v) { return v > 0; }).sort(function(a,b){return a-b;});
+
+    var html = '<div class="view">'
+            + '<button class="back" onclick="goNational()">← Alle fylker</button>'
+            + '<h2 class="med-h">' + fylke.name + '</h2>'
+            + '<div class="sub-lbl">' + fylke.municipalities.length + ' kommuner</div>'
+            + '<div class="divider"></div>'
+            + '<div class="sgrid">'
+            + '<div><div class="slbl">Befolkning</div>'
+            + '<div class="sval"><span id="fy-pop">' + fvPop(totalPop) + '</span></div>'
+            + '<div><span class="api-chip live">✓ SSB 07459 · ' + APP.popPeriod + '</span></div>'
+            + '</div>'
+            + '<div><div class="slbl">Kommuner</div>'
+            + '<div class="sval"><span>' + fylke.municipalities.length + '</span></div></div>'
+            + '</div>'
+            + (popData.length ? miniChart(popData, 'Befolkningsfordeling') : '')
+            + '<div class="sec-lbl">Kommuner (' + fylke.municipalities.length + ')</div>';
+
+    sorted.forEach(function(m) {
+      var pop = APP.population[m.knr];
+      html += '<button class="lrow" onclick="goMuni(\'' + m.knr + '\')">'
+              + '<span class="rn">' + m.name + '</span>'
+              + '<span class="rv">' + (pop ? fvPop(pop) : '–') + '</span></button>';
+    });
+    html += '</div>';
+    document.getElementById('data').innerHTML = html;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     RENDER MUNICIPALITY
+  ═══════════════════════════════════════════════════════════ */
+  async function renderMuni(knr) {
+    var m = APP.municipality;
+    var fylke = APP.county;
+    var pop = APP.population[knr];
+
+    /* Show immediately with population (which we already have) */
+    var rank = fylke.municipalities
+            .slice()
+            .sort(function(a,b){return (APP.population[b.knr]||0)-(APP.population[a.knr]||0);})
+            .findIndex(function(x){return x.knr===knr;}) + 1;
+
+    var html = '<div class="view">'
+            + '<button class="back" onclick="goFylke(\'' + fylke.fylkeNr + '\')">← ' + fylke.name + '</button>'
+            + '<h2 class="med-h">' + m.name + '</h2>'
+            + '<div class="sub-lbl">Kommune i ' + fylke.name + ' · nr. ' + knr + '</div>'
+            + '<div class="divider"></div>'
+            + '<div class="sgrid">'
+            + statCard('Befolkning', pop || null, '', 'up', 'mn-pop')
+            + statCard('Areal', null, 'km²', 'neutral', 'mn-ar')
+            + '</div>'
+            + '<div id="mn-charts"></div>'
+            + '<div class="rank-row">Rangerer <strong>#' + rank + '</strong> av '
+            + fylke.municipalities.length + ' i ' + fylke.name + '</div>'
+            + '</div>';
+
+    document.getElementById('data').innerHTML = html;
+
+    /* Show population immediately */
+    if (pop) {
+      var popEl = document.getElementById('sv-mn-pop');
+      if (popEl) anim(popEl, 0, pop, 900);
+      setChip('mn-pop', 'live', '✓ SSB 07459 · per 1.jan ' + APP.popPeriod);
+    } else {
+      setChip('mn-pop', 'static', '– ikke tilgjengelig');
+    }
+    setChip('mn-ar', 'static', 'ikke hentet');
+
+    /* Fetch full details from backend */
+    try {
+      var data = await loadKommune(knr);
+
+      /* Animate to live values */
+      animCard('mn-pop', pop || 0, data.population, 800);
+      if (data.population) {
+        setChip('mn-pop', 'live', '✓ SSB 07459 · ' + data.period_pop + ' · '
+                + data.population.toLocaleString('nb-NO'));
+      }
+
+      /* Fetch real population trend from SSB 07459 (last 15 years) */
+      var chartsEl = document.getElementById('mn-charts');
+      if (chartsEl) {
+        chartsEl.innerHTML = '<div style="padding:12px 0;color:var(--c-muted);font-size:12px">Laster befolkningstrend...</div>';
+        try {
+          var trendUrl = '/api/trend?knr=' + knr;
+          var trendData = await apiFetch(trendUrl);
+          if (trendData && trendData.years && trendData.values) {
+            chartsEl.innerHTML = miniChartReal(trendData.years, trendData.values, 'Befolkning per 1. jan · SSB 07459');
+          }
+        } catch(te) {
+          chartsEl.innerHTML = '';
+        }
+      }
+
+    } catch(e) {
+      console.warn('[renderMuni] Feilet for', knr, e.message);
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     NAVIGATION
+  ═══════════════════════════════════════════════════════════ */
+  function goNational() {
+    APP.county = null; APP.municipality = null;
+    renderNational(); renderBC(); updateMap();
+  }
+
+  function goFylke(fylkeNr) {
+    var f = APP.fylker.find(function(x) { return x.fylkeNr === fylkeNr; });
+    if (!f) return;
+    if (kommLayers) { MAP.removeLayer(kommLayers); kommLayers = null; }
+    APP.county = f; APP.municipality = null;
+    renderFylke(f); renderBC(); updateMap();
+  }
+
+  function goMuni(knr) {
+    var m = APP.municipalities.find(function(x) { return x.knr === knr; });
+    if (!m) return;
+    var f = APP.fylker.find(function(x) { return x.fylkeNr === m.fylkeNr; });
+    APP.county = f; APP.municipality = m;
+    renderMuni(knr); renderBC();
+    /* Update map highlight */
+    if (kommLayers) {
+      kommLayers.eachLayer(function(layer) {
+        if (layer.feature) layer.setStyle(getKommStyle(layer.feature, knr));
+      });
+    }
+    var center = MUNI_CENTERS[knr] || (f ? FYLKE_CENTERS[f.fylkeNr] : null);
+    if (center) MAP.flyTo(center, 9, { duration: 1.4, easeLinearity: .25 });
+  }
+
+  function setMode(mode, btn) {
+    APP.mode = mode;
+    document.querySelectorAll('.mbtn').forEach(function(b) { b.classList.remove('on'); });
+    btn.classList.add('on');
+    updateLegend();
+    if (!APP.county) renderNational();
+    else if (!APP.municipality) renderFylke(APP.county);
+    else renderMuni(APP.municipality.knr);
+    updateGeoColors();
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     LEGEND
+  ═══════════════════════════════════════════════════════════ */
+  function updateLegend() {
+    var m = MC[APP.mode];
+    document.getElementById('leg-min').textContent = m.legMin;
+    document.getElementById('leg-max').textContent = m.legMax;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     MAP — GeoJSON polygons
+  ═══════════════════════════════════════════════════════════ */
+  var MAP = null, fylkLayers = {}, kommLayers = null, fylkGeo = null, kommGeo = null, geoReady = false;
+
+  function normName(s) { return (s || '').toLowerCase().trim(); }
+  var NAVN_TO_KNR = {};
+
+  function colorScale(val, min, max) {
+    var n = Math.max(0, Math.min(1, (val - min) / (max - min)));
+    var r = Math.round(214 - n * 169), g = Math.round(227 - n * 127), b = Math.round(252 - n * 82);
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  }
+
+  function getFylkeStyle(feat) {
+    var nm = normName(feat.properties.navn || feat.properties.name || '');
+    var fn = FYLKE_GEO_MAP[nm];
+    var fylke = fn ? APP.fylker.find(function(f){return f.fylkeNr===fn;}) : null;
+    var isSelC = APP.county && APP.county.fylkeNr === fn;
+    var isDim = APP.county && !isSelC;
+    if (isSelC) return { fillColor:'transparent',fillOpacity:0,weight:2.5,opacity:.9,color:'#2d5bf6' };
+    if (isDim) return { fillColor:'rgba(180,195,240,.15)',fillOpacity:1,weight:.5,opacity:.3,color:'#8fa5e8' };
+    var v = fylke ? fylkePopulation(fylke) : 0;
+    return { fillColor: colorScale(v,100000,1500000), fillOpacity:.65, weight:1, opacity:.65, color:'#6b8fd4' };
+  }
+
+  function getKommStyle(feat, activeKnr) {
+    var geoNm = normName(feat.properties.navn || feat.properties.name || '');
+    var geoKnr = feat.properties.kommunenummer || '';
+    var knr = NAVN_TO_KNR[geoNm] || geoKnr;
+    var isActive = activeKnr && knr === activeKnr;
+    if (isActive) return { fillColor:'#2d5bf6',fillOpacity:.9,weight:2.5,opacity:1,color:'#fff' };
+    var pop = APP.population[knr] || 0;
+    return { fillColor: colorScale(pop, 500, 300000), fillOpacity:.75, weight:.7, opacity:.65, color:'#6b8fd4' };
+  }
+
+  async function loadGeo() {
+    var cdns = [
+      'https://cdn.jsdelivr.net/gh/robhop/fylker-og-kommuner@main/',
+      'https://raw.githubusercontent.com/robhop/fylker-og-kommuner/main/'
+    ];
+    for (var i = 0; i < cdns.length; i++) {
+      try {
+        var [fr, kr] = await Promise.all([
+          fetch(cdns[i] + 'Fylker-S.geojson', { signal: AbortSignal.timeout(15000) }),
+          fetch(cdns[i] + 'Kommuner-S.geojson', { signal: AbortSignal.timeout(20000) })
+        ]);
+        if (!fr.ok || !kr.ok) throw new Error('HTTP');
+        fylkGeo = await fr.json();
+        kommGeo = await kr.json();
+
+        /* Build name→knr lookup from GeoJSON */
+        kommGeo.features.forEach(function(f) {
+          var nm = normName(f.properties.navn || f.properties.name || '');
+          var knr = f.properties.kommunenummer;
+          if (nm && knr) NAVN_TO_KNR[nm] = knr;
+        });
+
+        renderFylkLayer();
+        geoReady = true;
+        document.getElementById('map-loading').classList.add('hide');
+        return;
+      } catch(e) { console.warn('GeoJSON CDN', i, e.message); }
+    }
+    document.getElementById('map-loading').classList.add('hide');
+  }
+
+  function renderFylkLayer() {
+    if (!fylkGeo) return;
+    L.geoJSON(fylkGeo, {
+      style: getFylkeStyle,
+      onEachFeature: function(feat, layer) {
+        var nm = normName(feat.properties.navn || feat.properties.name || '');
+        var fn = FYLKE_GEO_MAP[nm];
+        var dn = feat.properties.navn || feat.properties.name || nm;
+        fylkLayers[nm] = layer;
+        layer.bindTooltip(dn, { sticky:true, direction:'top', offset:[0,-6] });
+        layer.on('mouseover', function() {
+          if (APP.county && APP.county.fylkeNr === fn) return;
+          if (APP.county) return;
+          this.setStyle({ fillOpacity:.9, weight:2, opacity:.9, color:'#2d5bf6' });
+          this.bringToFront();
+        });
+        layer.on('mouseout', function() {
+          if (APP.county && APP.county.fylkeNr === fn) return;
+          this.setStyle(getFylkeStyle(feat));
+        });
+        layer.on('click', function() { if (fn) goFylke(fn); });
+      }
+    }).addTo(MAP);
+  }
+
+  function renderKommLayer(fylkeNr) {
+    if (kommLayers) { MAP.removeLayer(kommLayers); kommLayers = null; }
+    if (!kommGeo) return;
+    var fylke = APP.fylker.find(function(f) { return f.fylkeNr === fylkeNr; });
+    if (!fylke) return;
+    var muniKnrs = new Set(fylke.municipalities.map(function(m) { return m.knr; }));
+    var muniNames = new Set(fylke.municipalities.map(function(m) { return normName(m.name); }));
+
+    var filtered = {
+      type: 'FeatureCollection',
+      features: kommGeo.features.filter(function(f) {
+        var nm = normName(f.properties.navn || f.properties.name || '');
+        var geoKnr = f.properties.kommunenummer || '';
+        return muniKnrs.has(geoKnr) || muniNames.has(nm);
+      })
+    };
+
+    var activeKnr = APP.municipality ? APP.municipality.knr : null;
+    kommLayers = L.geoJSON(filtered, {
+      style: function(feat) { return getKommStyle(feat, activeKnr); },
+      onEachFeature: function(feat, layer) {
+        var nm = normName(feat.properties.navn || feat.properties.name || '');
+        var geoKnr = feat.properties.kommunenummer || '';
+        var knr = NAVN_TO_KNR[nm] || geoKnr;
+        var muniObj = APP.municipalities.find(function(m) { return m.knr === knr; });
+        var dn = muniObj ? muniObj.name : (feat.properties.navn || feat.properties.name || knr);
+        var pop = APP.population[knr];
+        var tip = dn + (pop ? ' · ' + fvPop(pop) : '');
+        layer.bindTooltip(tip, { sticky:true, direction:'top', offset:[0,-6] });
+        layer.on('mouseover', function() {
+          var cur = APP.municipality ? APP.municipality.knr : null;
+          if (knr === cur) return;
+          this.setStyle({ fillColor:'rgba(45,91,246,.5)', fillOpacity:1, weight:1.5, opacity:.9, color:'#2d5bf6' });
+          this.bringToFront();
+        });
+        layer.on('mouseout', function() {
+          var cur = APP.municipality ? APP.municipality.knr : null;
+          if (knr === cur) return;
+          this.setStyle(getKommStyle(feat, cur));
+        });
+        layer.on('click', function() { if (knr) goMuni(knr); });
+      }
+    }).addTo(MAP);
+  }
+
+  function updateGeoColors() {
+    if (!geoReady) return;
+    if (fylkGeo) {
+      fylkGeo.features.forEach(function(feat) {
+        var nm = normName(feat.properties.navn || feat.properties.name || '');
+        var l = fylkLayers[nm];
+        if (l) l.setStyle(getFylkeStyle(feat));
+      });
+    }
+  }
+
+  function updateMap() {
+    updateGeoColors();
+    if (APP.county && geoReady && kommGeo) {
+      if (!kommLayers) renderKommLayer(APP.county.fylkeNr);
+      var c = FYLKE_CENTERS[APP.county.fylkeNr];
+      if (c) MAP.flyTo(c, 7, { duration: 1.4, easeLinearity: .25 });
+    } else {
+      if (kommLayers) { MAP.removeLayer(kommLayers); kommLayers = null; }
+      if (!APP.county) MAP.flyTo([65.0, 14.0], 4.5, { duration: 1.4, easeLinearity: .25 });
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     SEARCH
+  ═══════════════════════════════════════════════════════════ */
+  var sIdx = 0, sRes = [];
+
+  function openSearch() {
+    document.getElementById('s-ov').style.display = 'block';
+    document.getElementById('s-in').value = '';
+    renderSR([]);
+    setTimeout(function() { document.getElementById('s-in').focus(); }, 50);
+  }
+  function closeSearch() { document.getElementById('s-ov').style.display = 'none'; }
+
+  function onSearch(q) {
+    q = q.trim().toLowerCase();
+    if (!q) { renderSR([]); return; }
+    sRes = APP.municipalities
+            .filter(function(m) { return m.name.toLowerCase().includes(q); })
+            .slice(0, 14);
+    sIdx = 0;
+    renderSR(sRes);
+  }
+
+  function renderSR(res) {
+    var el = document.getElementById('s-rs');
+    if (!res.length) {
+      el.innerHTML = '<div class="s-empty">Søk blant ' + APP.municipalities.length + ' kommuner</div>';
+      return;
+    }
+    el.innerHTML = res.map(function(m, i) {
+      var fylke = APP.fylker.find(function(f) { return f.fylkeNr === m.fylkeNr; });
+      var pop = APP.population[m.knr];
+      return '<button class="s-rw' + (i === sIdx ? ' sel' : '') + '" onclick="selS(\'' + m.knr + '\')">'
+              + '<span><span class="srn">' + m.name + '</span>'
+              + '<span class="sbdg">' + (fylke ? fylke.name : '') + '</span></span>'
+              + '<span class="srv">' + (pop ? fvPop(pop) : '–') + '</span></button>';
+    }).join('');
+  }
+
+  function selS(knr) { closeSearch(); goMuni(knr); }
+
+  function onSKey(e) {
+    if (e.key === 'Escape') { closeSearch(); return; }
+    if (e.key === 'ArrowDown') { sIdx = Math.min(sIdx+1, sRes.length-1); renderSR(sRes); e.preventDefault(); }
+    if (e.key === 'ArrowUp') { sIdx = Math.max(sIdx-1, 0); renderSR(sRes); e.preventDefault(); }
+    if (e.key === 'Enter' && sRes[sIdx]) selS(sRes[sIdx].knr);
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); openSearch(); }
+    if (e.key === 'Escape' && document.getElementById('s-ov').style.display === 'block') closeSearch();
+  });
+
+  /* ═══════════════════════════════════════════════════════════
+     INIT — load everything from API then show app
+  ═══════════════════════════════════════════════════════════ */
+  async function init() {
+    var initMsg = document.getElementById('init-msg');
+    try {
+      /* Step 1: Load municipality list from SSB KLASS */
+      initMsg.textContent = 'Henter kommuneliste fra SSB KLASS…';
+      await loadAllMunicipalities();
+
+      /* Step 2: Load befolkning (required before showing app) */
+      initMsg.textContent = 'Henter befolkningstall fra SSB 07459…';
+      await Promise.all([loadAllPopulation(), loadNational()]);
+
+      /* Step 3: Init map */
+      initMsg.textContent = 'Starter kart…';
+      MAP = L.map('map', { center:[65.0,14.0], zoom:4.5, zoomControl:false, attributionControl:false });
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',
+              { subdomains:'abcd', maxZoom:14, opacity:0.55 }).addTo(MAP);
+
+      updateLegend();
+      renderNational();
+      renderBC();
+
+      /* Step 4: Show app immediately — don't wait for ledighet/økonomi */
+      document.getElementById('app-init').classList.add('hide');
+      document.getElementById('app').style.opacity = '1';
+
+      /* Step 5: Load GeoJSON + ledighet + økonomi in background */
+      loadGeo();
+
+      /* Load ledighet and økonomi in background, re-render when done */
+
+
+    } catch(e) {
+      initMsg.textContent = 'Feil: ' + e.message + ' — last siden på nytt';
+      initMsg.style.color = 'var(--neg)';
+      console.error('[init] Fatal:', e);
+    }
+  }
+
+  window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
