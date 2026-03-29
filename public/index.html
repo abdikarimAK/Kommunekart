@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🗺️</text></svg>">
   <title>Norge · Kommunekart</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -133,6 +134,30 @@
     #app-init.hide{opacity:0;pointer-events:none}
     .init-title{font-size:18px;font-weight:300;letter-spacing:-.01em;color:var(--text)}
     .init-sub{font-size:12px;color:var(--text-ter);letter-spacing:.06em;text-transform:uppercase}
+
+    /* ── RESPONSIVE MOBILE ─────────────────────────────────── */
+    @media (max-width: 768px) {
+      #app { flex-direction: column; }
+      #left { width: 100%; max-width: 100%; min-width: 0; border-right: none; border-bottom: 1px solid var(--border); height: 55vh; flex-shrink: 0; }
+      #right { flex: 1; min-height: 45vh; }
+      #topbar { padding: 16px 20px 10px; }
+      #data { padding: 16px 20px; }
+      #bc-wrap { padding: 12px 20px 16px; }
+      .big-h { font-size: clamp(32px, 8vw, 52px); }
+      .med-h { font-size: clamp(26px, 7vw, 42px); }
+      .pval { font-size: 36px; }
+      .sgrid { grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+      #modes { flex-wrap: wrap; gap: 2px; }
+      .mbtn { font-size: 10px; padding: 5px 10px; }
+      #app-init { padding: 0 24px; text-align: center; }
+    }
+    @media (max-width: 480px) {
+      #left { height: 60vh; }
+      #right { min-height: 40vh; }
+      .big-h { font-size: 28px; }
+      .pval { font-size: 28px; }
+      .sgrid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
